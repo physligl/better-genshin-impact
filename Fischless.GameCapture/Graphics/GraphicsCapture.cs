@@ -43,6 +43,7 @@ public class GraphicsCapture : IGameCapture
 
     private long _lastFrameTime = 0;
 
+    private readonly Stopwatch _frameTimer = new Stopwatch();
 
     public void Dispose() => Stop();
 
@@ -93,6 +94,7 @@ public class GraphicsCapture : IGameCapture
             _captureSession.IsBorderRequired = false;
         }
 
+        _frameTimer.Start();
         _captureSession.StartCapture();
         IsCapturing = true;
     }
@@ -178,14 +180,12 @@ public class GraphicsCapture : IGameCapture
             return;
         }
 
-        // 限制最高处理帧率为66fps
-        var now = Kernel32.GetTickCount();
-        if (now - _lastFrameTime < 15)
+        // 限制最高处理帧率为62fps
+        if (_frameTimer.ElapsedMilliseconds - _lastFrameTime < 16)
         {
             return;
         }
-
-        _lastFrameTime = now;
+        _lastFrameTime = _frameTimer.ElapsedMilliseconds;
 
         var frameSize = _captureItem.Size;
 
@@ -313,18 +313,18 @@ public class GraphicsCapture : IGameCapture
         IsCapturing = false;
 
         // 释放最新帧
-        // _frameAccessLock.EnterWriteLock();
-        // try
-        // {
-        //     _latestFrame?.Dispose();
-        //     _latestFrame = null;
-        // }
-        // finally
-        // {
-        //     _frameAccessLock.ExitWriteLock();
-        // }
-        //
-        // _frameAccessLock.Dispose();
+        _frameAccessLock.EnterWriteLock();
+        try
+        {
+            _latestFrame?.Dispose();
+            _latestFrame = null;
+        }
+        finally
+        {
+            _frameAccessLock.ExitWriteLock();
+        }
+
+        _frameAccessLock.Dispose();
     }
 
     private void CaptureItemOnClosed(GraphicsCaptureItem sender, object args)
