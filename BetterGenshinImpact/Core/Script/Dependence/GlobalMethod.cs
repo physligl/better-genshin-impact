@@ -4,12 +4,14 @@ using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.Helpers;
 using System;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using BetterGenshinImpact.GameTask.Common;
 using Vanara.PInvoke;
 using static Vanara.PInvoke.User32;
 using BetterGenshinImpact.Core.Simulator.Extensions;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.ViewModel.Pages;
+using Fischless.WindowsInput;
 
 namespace BetterGenshinImpact.Core.Script.Dependence;
 
@@ -43,7 +45,14 @@ public class GlobalMethod
                 Simulation.SendInput.Mouse.XButtonDown(0x0001);
                 break;
             default:
-                Simulation.SendInput.Keyboard.KeyDown(vk);
+                if (InputBuilder.IsExtendedKey(vk))
+                {
+                    Simulation.SendInput.Keyboard.KeyDown(false, vk);
+                }
+                else
+                {
+                    Simulation.SendInput.Keyboard.KeyDown(vk);
+                }
                 break;
         }
     }
@@ -69,7 +78,14 @@ public class GlobalMethod
                 Simulation.SendInput.Mouse.XButtonUp(0x0001);
                 break;
             default:
-                Simulation.SendInput.Keyboard.KeyUp(vk);
+                if (InputBuilder.IsExtendedKey(vk))
+                {
+                    Simulation.SendInput.Keyboard.KeyUp(false, vk);
+                }
+                else
+                {
+                    Simulation.SendInput.Keyboard.KeyUp(vk);
+                }
                 break;
         }
     }
@@ -112,7 +128,6 @@ public class GlobalMethod
         }
     }
 
-   
     #endregion 键盘操作
 
     #region 鼠标操作
@@ -217,4 +232,43 @@ public class GlobalMethod
     }
 
     #endregion 识图操作
+
+    #region 文字输入操作
+
+    public static void InputText(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        // 保存当前剪贴板内容
+        string originalClipboardText = Clipboard.GetText();
+
+        try
+        {
+            // 将要输入的文本复制到剪贴板
+            Clipboard.SetText(text);
+
+            // 模拟Ctrl+V粘贴操作
+            Simulation.SendInput.Keyboard.KeyDown(false, VK.VK_CONTROL);
+            Sleep(20);
+            Simulation.SendInput.Keyboard.KeyPress(VK.VK_V);
+            Sleep(20);
+            Simulation.SendInput.Keyboard.KeyUp(false, VK.VK_CONTROL);
+
+            // 等待一小段时间确保粘贴完成
+            Sleep(100);
+        }
+        finally
+        {
+            // 恢复原始剪贴板内容
+            if (!string.IsNullOrEmpty(originalClipboardText))
+            {
+                Clipboard.SetText(originalClipboardText);
+            }
+        }
+    }
+
+    #endregion 文字输入操作
 }

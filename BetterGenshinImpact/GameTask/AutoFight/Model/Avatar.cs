@@ -83,8 +83,8 @@ public class Avatar
     public CombatScenes CombatScenes { get; set; }
 
     public static string? LastActiveAvatar { get; internal set; } = null;
-    
-    
+
+
     public Avatar(CombatScenes combatScenes, string name, int index, Rect nameRect, double manualSkillCd = -1)
     {
         CombatScenes = combatScenes;
@@ -427,17 +427,19 @@ public class Avatar
 
             var region = CaptureToRectArea();
             ThrowWhenDefeated(region, Ct); // 检测是不是要跑神像
-            var cd = GetSkillCurrentCd(region);
+            var cd = AfterUseSkill(region);
             if (cd > 0)
             {
-                Logger.LogInformation(hold ? "{Name} 长按元素战技，cd:{Cd}" : "{Name} 点按元素战技，cd:{Cd}", Name, cd);
+                Logger.LogInformation(hold ? "{Name} 长按元素战技，cd:{Cd} 秒" : "{Name} 点按元素战技，cd:{Cd} 秒", Name,
+                    Math.Round(cd, 2));
                 return;
             }
         }
     }
 
     /// <summary>
-    /// 使用完元素战技的回调,注意,不会在这里检测是不是需要跑七天神像
+    /// 使用完元素战技的回调,注意,不会在这里检测是不是需要跑七天神像 <br/>
+    /// UseSkill 方法内会调用，如果没有使用UseSkill但是释放了技能之后记得调用一下这个方法
     /// </summary>
     /// <returns>当前技能CD</returns>
     public double AfterUseSkill(ImageRegion? givenRegion = null)
@@ -882,10 +884,10 @@ public class Avatar
     /// 从配置字符串中查找角色cd
     /// 仅有角色名时返回 -1 ,没找到角色返回null
     /// </summary>
-    /// <param name="input">序列</param>
     /// <param name="avatarName">角色名</param>
+    /// <param name="input">序列</param>
     /// <returns></returns>
-    public static double? ParseActionSchedulerByCd(string input, string avatarName)
+    public static double? ParseActionSchedulerByCd(string avatarName, string input)
     {
         if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(avatarName))
             return null;
