@@ -93,7 +93,7 @@ public class Dispatcher
     /// <param name="customCts">自定义取消令牌源，允许从JS控制任务取消</param>
     /// <exception cref="ArgumentNullException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public async Task RunTask(SoloTask soloTask, System.Threading.CancellationTokenSource customCts = null)
+    public async Task RunTask(SoloTask soloTask, CancellationTokenSource customCts = null)
     {
         if (soloTask == null)
         {
@@ -106,13 +106,11 @@ public class Dispatcher
             throw new ArgumentNullException(nameof(taskSettingsPageViewModel), "内部视图模型对象为空");
         }
 
-        // 创建一个链接的取消令牌源，同时监听自定义令牌和全局令牌
         CancellationTokenSource linkedCts = null;
         CancellationToken cancellationToken;
 
         if (customCts != null)
         {
-            // 创建链接的取消令牌源，任何一个取消都会触发
             linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
                 customCts.Token, 
                 CancellationContext.Instance.Cts.Token);
@@ -120,7 +118,6 @@ public class Dispatcher
         }
         else
         {
-            // 如果没有自定义令牌，就使用全局令牌
             cancellationToken = CancellationContext.Instance.Cts.Token;
         }
 

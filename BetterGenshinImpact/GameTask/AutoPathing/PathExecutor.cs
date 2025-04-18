@@ -42,6 +42,7 @@ public class PathExecutor
 {
     private readonly CameraRotateTask _rotateTask;
     private readonly TrapEscaper _trapEscaper;
+    private readonly MovementStateContext _movementStateContext;
     private readonly BlessingOfTheWelkinMoonTask _blessingOfTheWelkinMoonTask = new();
     private AutoSkipTrigger? _autoSkipTrigger;
 
@@ -55,6 +56,7 @@ public class PathExecutor
         _rotateTask = new(ct);
         this.ct = ct;
         pathExecutorSuspend = new PathExecutorSuspend(this);
+        _movementStateContext = new MovementStateContext(ct);
     }
 
     public PathingPartyConfig PartyConfig
@@ -246,8 +248,9 @@ public class PathExecutor
                 finally
                 {
                     // 不管咋样，松开所有按键
-                    Simulation.SendInput.Keyboard.KeyUp(User32.VK.VK_W);
-                    Simulation.SendInput.Mouse.RightButtonUp();
+                    var walkingState = new WalkingState(ct);
+                    await _movementStateContext.TransitionTo(walkingState);
+                    await walkingState.ExitState();
                 }
             }
         }
@@ -609,7 +612,7 @@ public class PathExecutor
 
     public DateTime moveToStartTime;
 
-    public async Task MoveTo(WaypointForTrack waypoint)
+        public async Task MoveTo(WaypointForTrack waypoint)
     {
         // 切人
         await SwitchAvatar(PartyConfig.MainAvatarIndex);
@@ -621,20 +624,14 @@ public class PathExecutor
         await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
         moveToStartTime = DateTime.UtcNow;
         var lastPositionRecord = DateTime.UtcNow;
-        var fastMode = false;
         var prevPositions = new List<Point2f>();
-        var fastModeColdTime = DateTime.MinValue;
         var num = 0;
 
-        // 按下w，一直走
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+        // 根据路径点的移动模式切换状态
+        await _movementStateContext.SwitchStateByMoveMode(waypoint.MoveMode);
+        
         while (!ct.IsCancellationRequested)
         {
-            if (!Simulation.IsKeyDown(GIActions.MoveForward.ToActionKey().ToVK()))
-            {
-                Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-            }
-            
             num++;
             if ((DateTime.UtcNow - moveToStartTime).TotalSeconds > 240)
             {
@@ -643,12 +640,11 @@ public class PathExecutor
             }
 
             screen = CaptureToRectArea();
-
             EndJudgment(screen);
-
             position = await GetPosition(screen);
             var distance = Navigation.GetDistance(waypoint, position);
             Debug.WriteLine($"接近目标点中，距离为{distance}");
+            
             if (distance < 4)
             {
                 Logger.LogInformation("到达路径点附近");
@@ -665,8 +661,6 @@ public class PathExecutor
                 {
                     Logger.LogWarning("距离过远，跳过路径点");
                 }
-
-
                 break;
             }
 
@@ -689,12 +683,8 @@ public class PathExecutor
                             }
 
                             Logger.LogWarning("疑似卡死，尝试脱离...");
-
-                            //调用脱困代码，由TrapEscaper接管移动
                             await _trapEscaper.RotateAndMove();
                             await _trapEscaper.MoveTo(waypoint);
-                            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-                            Logger.LogInformation("卡死脱离结束");
                             continue;
                         }
                     }
@@ -703,95 +693,11 @@ public class PathExecutor
 
             // 旋转视角
             targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
-            //执行旋转
             _rotateTask.RotateToApproach(targetOrientation, screen);
 
-            // 根据指定方式进行移动
-            if (waypoint.MoveMode == MoveModeEnum.Fly.Code)
-            {
-                var isFlying = Bv.GetMotionStatus(screen) == MotionStatus.Fly;
-                if (!isFlying)
-                {
-                    Debug.WriteLine("未进入飞行状态，按下空格");
-                    Simulation.SendInput.SimulateAction(GIActions.Jump);
-                    await Delay(200, ct);
-                }
-
-                await Delay(200, ct);
-                continue;
-            }
-
-            if (waypoint.MoveMode == MoveModeEnum.Jump.Code)
-            {
-                Simulation.SendInput.SimulateAction(GIActions.Jump);
-                await Delay(200, ct);
-                continue;
-            }
-
-            // 只有设置为run才会一直疾跑
-            if (waypoint.MoveMode == MoveModeEnum.Run.Code)
-            {
-                if (distance > 20 != fastMode) // 距离大于20时可以使用疾跑/自由泳
-                {
-                    if (fastMode)
-                    {
-                        Simulation.SendInput.SimulateAction(GIActions.SprintMouse, KeyType.KeyUp);
-                    }
-                    else
-                    {
-                        Simulation.SendInput.SimulateAction(GIActions.SprintMouse, KeyType.KeyDown);
-                    }
-
-                    fastMode = !fastMode;
-                }
-            }
-            else if (waypoint.MoveMode == MoveModeEnum.Dash.Code)
-            {
-                if (distance > 20) // 距离大于25时可以使用疾跑
-                {
-                    if (Math.Abs((fastModeColdTime - DateTime.UtcNow).TotalMilliseconds) > 1000) //冷却一会
-                    {
-                        fastModeColdTime = DateTime.UtcNow;
-                        Simulation.SendInput.SimulateAction(GIActions.SprintMouse);
-                    }
-                }
-            }
-            else if (waypoint.MoveMode != MoveModeEnum.Climb.Code) //否则自动短疾跑
-            {
-                // 使用 E 技能
-                if (distance > 10 && !string.IsNullOrEmpty(PartyConfig.GuardianAvatarIndex) && double.TryParse(PartyConfig.GuardianElementalSkillSecondInterval, out var s))
-                {
-                    if (s < 1)
-                    {
-                        Logger.LogWarning("元素战技冷却时间设置太短，不执行！");
-                        return;
-                    }
-
-                    var ms = s * 1000;
-                    if ((DateTime.UtcNow - _elementalSkillLastUseTime).TotalMilliseconds > ms)
-                    {
-                        // 可能刚切过人在冷却时间内
-                        if (num <= 5 && (!string.IsNullOrEmpty(PartyConfig.MainAvatarIndex) && PartyConfig.GuardianAvatarIndex != PartyConfig.MainAvatarIndex))
-                        {
-                            await Delay(800, ct); // 总共1s
-                        }
-
-                        await UseElementalSkill();
-                        _elementalSkillLastUseTime = DateTime.UtcNow;
-                    }
-                }
-
-                // 自动疾跑
-                if (distance > 20 && PartyConfig.AutoRunEnabled)
-                {
-                    if (Math.Abs((fastModeColdTime - DateTime.UtcNow).TotalMilliseconds) > 2500) //冷却时间2.5s，回复体力用
-                    {
-                        fastModeColdTime = DateTime.UtcNow;
-                        Simulation.SendInput.SimulateAction(GIActions.SprintMouse);
-                    }
-                }
-            }
-
+            // 使用当前状态移动
+            await _movementStateContext.Move(waypoint, position, targetOrientation);
+            
             // 使用小道具
             if (PartyConfig.UseGadgetIntervalMs > 0)
             {
@@ -801,12 +707,25 @@ public class PathExecutor
                     _useGadgetLastUseTime = DateTime.UtcNow;
                 }
             }
+            
+            // 使用 E 技能
+            if (distance > 10 && !string.IsNullOrEmpty(PartyConfig.GuardianAvatarIndex) && double.TryParse(PartyConfig.GuardianElementalSkillSecondInterval, out var s))
+            {
+                if (s >= 1 && (DateTime.UtcNow - _elementalSkillLastUseTime).TotalMilliseconds > s * 1000)
+                {
+                    // 可能刚切过人在冷却时间内
+                    if (num <= 5 && (!string.IsNullOrEmpty(PartyConfig.MainAvatarIndex) && PartyConfig.GuardianAvatarIndex != PartyConfig.MainAvatarIndex))
+                    {
+                        await Delay(800, ct); // 总共1s
+                    }
+
+                    await UseElementalSkill();
+                    _elementalSkillLastUseTime = DateTime.UtcNow;
+                }
+            }
 
             await Delay(100, ct);
         }
-
-        // 抬起w键
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
     }
 
     private async Task UseElementalSkill()
