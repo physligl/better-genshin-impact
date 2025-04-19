@@ -41,16 +41,9 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 移动状态管理上下文 - 负责状态切换和调用当前状态的方法
     /// </summary>
-    public class MovementStateContext
+    public class MovementStateContext(CancellationToken ct)
     {
-        private IMovementState _currentState;
-        private readonly CancellationToken _ct;
-
-        public MovementStateContext(CancellationToken cancellationToken)
-        {
-            _ct = cancellationToken;
-            _currentState = new WalkingState(cancellationToken);
-        }
+        private IMovementState _currentState = new WalkingState(ct);
 
         /// <summary>
         /// 切换到新状态
@@ -71,18 +64,18 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
             IMovementState newState = moveMode switch
             {
                 var mode when mode == MoveModeEnum.Walk.Code => 
-                    new WalkingState(_ct),
+                    new WalkingState(ct),
                 var mode when mode == MoveModeEnum.Run.Code => 
-                    new RunningState(_ct),
+                    new RunningState(ct),
                 var mode when mode == MoveModeEnum.Fly.Code => 
-                    new FlyingState(_ct),
+                    new FlyingState(ct),
                 var mode when mode == MoveModeEnum.Climb.Code => 
-                    new ClimbingState(_ct),
+                    new ClimbingState(ct),
                 var mode when mode == MoveModeEnum.Jump.Code => 
-                    new JumpingState(_ct),
+                    new JumpingState(ct),
                 var mode when mode == MoveModeEnum.Dash.Code => 
-                    new DashingState(_ct),
-                _ => new WalkingState(_ct)
+                    new DashingState(ct),
+                _ => new WalkingState(ct)  // 默认行走
             };
 
             if (_currentState.GetType() != newState.GetType())
@@ -103,15 +96,8 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 基础移动状态类 - 提供共享的功能
     /// </summary>
-    public abstract class BaseMovementState : IMovementState
+    public abstract class BaseMovementState(CancellationToken ct) : IMovementState
     {
-        protected readonly CancellationToken CancellationToken;
-
-        protected BaseMovementState(CancellationToken cancellationToken)
-        {
-            CancellationToken = cancellationToken;
-        }
-
         public abstract string Name { get; }
         
         public virtual async Task EnterState()
@@ -135,18 +121,16 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
 
         protected async Task Delay(int milliseconds)
         {
-            await Task.Delay(milliseconds, CancellationToken);
+            await Task.Delay(milliseconds, ct);
         }
     }
 
     /// <summary>
     /// 行走状态 - 基本移动模式
     /// </summary>
-    public class WalkingState : BaseMovementState
+    public class WalkingState(CancellationToken ct) : BaseMovementState(ct)
     {
         public override string Name => "行走";
-
-        public WalkingState(CancellationToken cancellationToken) : base(cancellationToken) { }
 
         public override async Task Move(WaypointForTrack waypoint, Point2f currentPosition, int targetOrientation)
         {
@@ -159,12 +143,10 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 疾跑状态 - 长距离移动
     /// </summary>
-    public class RunningState : BaseMovementState
+    public class RunningState(CancellationToken ct) : BaseMovementState(ct)
     {
         public override string Name => "疾跑";
         private bool _isRunning = false;
-
-        public RunningState(CancellationToken cancellationToken) : base(cancellationToken) { }
 
         public override async Task EnterState()
         {
@@ -205,13 +187,11 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 飞行状态 - 滑翔
     /// </summary>
-    public class FlyingState : BaseMovementState
+    public class FlyingState(CancellationToken ct) : BaseMovementState(ct)
     {
         public override string Name => "飞行";
         private bool _isFlying = false;
         private int _flyAttempts = 0;
-
-        public FlyingState(CancellationToken cancellationToken) : base(cancellationToken) { }
 
         public override async Task EnterState()
         {
@@ -251,11 +231,9 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 攀爬状态 - 爬墙
     /// </summary>
-    public class ClimbingState : BaseMovementState
+    public class ClimbingState(CancellationToken ct) : BaseMovementState(ct)
     {
         public override string Name => "攀爬";
-
-        public ClimbingState(CancellationToken cancellationToken) : base(cancellationToken) { }
 
         public override async Task Move(WaypointForTrack waypoint, Point2f currentPosition, int targetOrientation)
         {
@@ -268,12 +246,10 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 跳跃状态 - 短跳
     /// </summary>
-    public class JumpingState : BaseMovementState
+    public class JumpingState(CancellationToken ct) : BaseMovementState(ct)
     {
         public override string Name => "跳跃";
         private DateTime _lastJumpTime = DateTime.MinValue;
-
-        public JumpingState(CancellationToken cancellationToken) : base(cancellationToken) { }
 
         public override async Task Move(WaypointForTrack waypoint, Point2f currentPosition, int targetOrientation)
         {
@@ -293,12 +269,10 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
     /// <summary>
     /// 冲刺状态 - 短距离冲刺
     /// </summary>
-    public class DashingState : BaseMovementState
+    public class DashingState(CancellationToken ct) : BaseMovementState(ct)
     {
         public override string Name => "冲刺";
         private DateTime _lastDashTime = DateTime.MinValue;
-
-        public DashingState(CancellationToken cancellationToken) : base(cancellationToken) { }
 
         public override async Task Move(WaypointForTrack waypoint, Point2f currentPosition, int targetOrientation)
         {
