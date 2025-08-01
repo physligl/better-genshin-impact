@@ -15,6 +15,7 @@ using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.Core.Script.Project;
+using BetterGenshinImpact.Core.Script.Utils;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 using BetterGenshinImpact.GameTask.LogParse;
@@ -132,10 +133,19 @@ public partial class ScriptControlViewModel : ViewModel
 
         GameInfo? gameInfo = null;
         var config = LogParse.LoadConfig();
+        
+        OtherConfig.Miyoushe mcfg = TaskContext.Instance().Config.OtherConfig.MiyousheConfig;
+        if (mcfg.LogSyncCookie && !string.IsNullOrEmpty(mcfg.Cookie))
+        {
+            config.Cookie = mcfg.Cookie;
+        }
+        
         if (!string.IsNullOrEmpty(config.Cookie))
         {
             config.CookieDictionary.TryGetValue(config.Cookie, out gameInfo);
         }
+
+
 
         LogParseConfig.ScriptGroupLogParseConfig? sgpc;
         if (!config.ScriptGroupLogDictionary.TryGetValue(SelectedScriptGroup.Name, out sgpc))
@@ -194,6 +204,13 @@ public partial class ScriptControlViewModel : ViewModel
         dayRangeComboBox.SelectedIndex = 0;
         stackPanel.Children.Add(dayRangeComboBox);
 
+        CheckBox mergerStatsSwitch = new CheckBox
+        {
+            Content = "合并相邻同名配置组",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        stackPanel.Children.Add(mergerStatsSwitch);
+        
         // 开关控件：ToggleButton 或 CheckBox
         CheckBox faultStatsSwitch = new CheckBox
         {
@@ -201,14 +218,21 @@ public partial class ScriptControlViewModel : ViewModel
             VerticalAlignment = VerticalAlignment.Center
         };
         stackPanel.Children.Add(faultStatsSwitch);
-
-
+        
         // 开关控件：ToggleButton 或 CheckBox
         CheckBox hoeingStatsSwitch = new CheckBox
         {
             Content = "统计锄地摩拉怪物数",
             VerticalAlignment = VerticalAlignment.Center
         };
+        
+        CheckBox GenerateFarmingPlanData = new CheckBox
+        {
+            Content = "生成锄地规划数据",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        stackPanel.Children.Add(GenerateFarmingPlanData);
+        
         //firstRow.Children.Add(toggleSwitch);
 
         // 将第一行添加到 StackPanel
@@ -301,7 +325,10 @@ public partial class ScriptControlViewModel : ViewModel
         dayRangeComboBox.SelectedValue = sgpc.DayRangeValue;
         cookieTextBox.Text = config.Cookie;
         hoeingStatsSwitch.IsChecked = sgpc.HoeingStatsSwitch;
+        GenerateFarmingPlanData.IsChecked = sgpc.GenerateFarmingPlanData;
         faultStatsSwitch.IsChecked = sgpc.FaultStatsSwitch;
+        mergerStatsSwitch.IsChecked = sgpc.MergerStatsSwitch;
+        
         hoeingDelayTextBox.Text = sgpc.HoeingDelay;
 
         MessageBoxResult result = await uiMessageBox.ShowDialogAsync();
@@ -317,12 +344,19 @@ public partial class ScriptControlViewModel : ViewModel
             sgpc.DayRangeValue = dayRangeValue;
             sgpc.RangeValue = rangeValue;
             sgpc.HoeingStatsSwitch = hoeingStatsSwitch.IsChecked ?? false;
+            sgpc.GenerateFarmingPlanData = GenerateFarmingPlanData.IsChecked ?? false;
             sgpc.FaultStatsSwitch = faultStatsSwitch.IsChecked ?? false;
+            sgpc.MergerStatsSwitch = mergerStatsSwitch.IsChecked ?? false;
             sgpc.HoeingDelay = hoeingDelayTextBox.Text;
 
             config.Cookie = cookieValue;
             config.ScriptGroupLogDictionary[SelectedScriptGroup.Name] = sgpc;
 
+            if (mcfg.LogSyncCookie && !string.IsNullOrEmpty(cookieValue))
+            {
+                mcfg.Cookie  = cookieValue;
+            }
+            
             LogParse.WriteConfigFile(config);
 
 
@@ -511,7 +545,34 @@ public partial class ScriptControlViewModel : ViewModel
         projects.ForEach(item => SelectedScriptGroup?.Projects.Add(item));
         if (SelectedScriptGroup != null) WriteScriptGroup(SelectedScriptGroup);
     }
-
+    [RelayCommand]
+    private void ExportMergerJsons()
+    {
+        int count = 0;
+        var pathDir = Path.Combine(LogPath,"exportMergerJson",DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),"AutoPathing");
+        foreach (var scriptGroupProject in SelectedScriptGroup?.Projects ?? [])
+        {
+            if (scriptGroupProject.Type == "Pathing")
+            {
+                var mergerJson= JsonMerger.getMergePathingJson(Path.Combine(MapPathingViewModel.PathJsonPath,
+                    scriptGroupProject.FolderName, scriptGroupProject.Name));
+                string fullPath = Path.Combine(pathDir,scriptGroupProject.FolderName,scriptGroupProject.Name);
+                string dir = Path.GetDirectoryName(fullPath);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                File.WriteAllText(fullPath, mergerJson);
+                count++;
+            }
+        }
+        if (count>0)
+        {
+            Process.Start("explorer.exe", pathDir);
+        }
+    }
+    
+    
     [RelayCommand]
     public void AddScriptGroupNextFlag(ScriptGroup? item)
     {
@@ -667,7 +728,7 @@ public partial class ScriptControlViewModel : ViewModel
         {
             Content = stackPanel,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Height = 435 // 固定高度
+            //Height = 435 // 固定高度
         };
 
         return scrollViewer;
@@ -733,7 +794,10 @@ public partial class ScriptControlViewModel : ViewModel
     private void OnAddKmScript()
     {
         var list = LoadAllKmScripts();
-        var combobox = new ComboBox();
+        var combobox = new ComboBox
+        {
+            VerticalAlignment = VerticalAlignment.Top
+        };
 
         foreach (var fileInfo in list)
         {
@@ -763,7 +827,7 @@ public partial class ScriptControlViewModel : ViewModel
         var root = FileTreeNodeHelper.LoadDirectory<PathingTask>(MapPathingViewModel.PathJsonPath);
         var stackPanel = CreatePathingScriptSelectionPanel(root.Children);
 
-        var result = PromptDialog.Prompt("请选择需要添加的地图追踪任务", "请选择需要添加的地图追踪任务", stackPanel, new Size(500, 600));
+        var result = PromptDialog.Prompt("请选择需要添加的地图追踪任务", "请选择需要添加的地图追踪任务", stackPanel, new Size(600, 720));
         if (!string.IsNullOrEmpty(result))
         {
             AddSelectedPathingScripts((StackPanel)stackPanel.Content);
@@ -785,6 +849,8 @@ public partial class ScriptControlViewModel : ViewModel
             Margin = new Thickness(0, 0, 0, 10),
             PlaceholderText = "输入筛选条件...",
         };
+        // 设置文本框自动聚焦
+        filterTextBox.Loaded += (s, e) => filterTextBox.Focus();
         filterTextBox.TextChanged += delegate { ApplyFilter(stackPanel, list, filterTextBox.Text, excludeCheckBox.IsChecked); };
         excludeCheckBox.Click += delegate { ApplyFilter(stackPanel, list, filterTextBox.Text, excludeCheckBox.IsChecked); };
         stackPanel.Children.Add(filterTextBox);
@@ -794,7 +860,7 @@ public partial class ScriptControlViewModel : ViewModel
         {
             Content = stackPanel,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Height = 435 // 固定高度
+            //Height = 435 // 固定高度
         };
 
         return scrollViewer;
@@ -842,7 +908,7 @@ public partial class ScriptControlViewModel : ViewModel
             parentPanel.Children.Add(filterTextBox); // 保留筛选框
             AddNodesToPanel(parentPanel, nodes, 0, filter);
         }*/
-    }
+        }
 
     private void AddNodesToPanel(StackPanel parentPanel, IEnumerable<FileTreeNode<PathingTask>> nodes, int depth, string filter)
     {
@@ -1483,7 +1549,6 @@ public partial class ScriptControlViewModel : ViewModel
     [RelayCommand]
     public async Task OnContinueMultiScriptGroupAsync()
     {
-        // 创建一个 StackPanel 来包含全选按钮和所有配置组的 CheckBox
 
        // 创建一个 StackPanel 来包含全选按钮和所有配置组的 CheckBox
         var stackPanel = new StackPanel();
@@ -1635,6 +1700,7 @@ public partial class ScriptControlViewModel : ViewModel
         var selectAllCheckBox = new CheckBox
         {
             Content = "全选",
+            IsThreeState = true
         };
         selectAllCheckBox.Checked += (s, e) =>
         {
@@ -1650,8 +1716,21 @@ public partial class ScriptControlViewModel : ViewModel
                 checkBox.IsChecked = false;
             }
         };
+        selectAllCheckBox.Indeterminate += (s, e) =>
+        {
+            if (checkBoxes.Values.All(cb => cb.IsChecked == true))
+            {
+                selectAllCheckBox.IsChecked = false;
+            }
+            else if (checkBoxes.Values.All(cb => cb.IsChecked == false))
+            {
+                selectAllCheckBox.IsChecked = true;
+            }
+        };
+
         stackPanel.Children.Add(loopCheckBox);
         stackPanel.Children.Add(selectAllCheckBox);
+
         // 添加分割线
         var separator = new Separator
         {
@@ -1662,6 +1741,10 @@ public partial class ScriptControlViewModel : ViewModel
         // 创建每个配置组的 CheckBox
         foreach (var scriptGroup in ScriptGroups)
         {
+            if (scriptGroup.Config.PathingConfig.HideOnRepeat)
+            {
+                continue;
+            }
             var checkBox = new CheckBox
             {
                 Content = scriptGroup.Name,
@@ -1669,6 +1752,26 @@ public partial class ScriptControlViewModel : ViewModel
             };
             checkBoxes[scriptGroup] = checkBox;
             stackPanel.Children.Add(checkBox);
+
+            checkBox.Checked += (s, e) => UpdateSelectAllCheckBoxState();
+            checkBox.Unchecked += (s, e) => UpdateSelectAllCheckBoxState();
+        }
+
+        void UpdateSelectAllCheckBoxState()
+        {
+            int checkedCount = checkBoxes.Values.Count(cb => cb.IsChecked == true);
+            if (checkedCount == 0)
+            {
+                selectAllCheckBox.IsChecked = false;
+            }
+            else if (checkedCount == checkBoxes.Count)
+            {
+                selectAllCheckBox.IsChecked = true;
+            }
+            else
+            {
+                selectAllCheckBox.IsChecked = null;
+            }
         }
 
         var uiMessageBox = new Wpf.Ui.Controls.MessageBox
@@ -1694,9 +1797,26 @@ public partial class ScriptControlViewModel : ViewModel
                 .Select(kv => kv.Key)
                 .ToList();
 
+            if (selectedGroups.Count == 0)
+            {
+                _snackbarService.Show(
+                    "未选择配置组",
+                    "请至少选择一个配置组进行执行",
+                    ControlAppearance.Caution,
+                    null,
+                    TimeSpan.FromSeconds(3)
+                );
+                return;
+            }
             await StartGroups(selectedGroups,null,loopCheckBox.IsChecked ?? false);;
         }
     }
+
+    private void SelectAllCheckBox_Indeterminate(object sender, RoutedEventArgs e)
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task OnStartMultiScriptGroupWithNamesAsync(params string[] names)
     {
         if( ScriptGroups.Count == 0)
