@@ -74,7 +74,7 @@ public class UseGadgetHandler : IActionHandler
     /// </summary>
     private double GetCurrentCd(ImageRegion imageRegion)
     {
-        var eRa = imageRegion.DeriveCrop(AutoFightAssets.Instance.ZCooldownRect);
+        using var eRa = imageRegion.DeriveCrop(AutoFightAssets.Get(imageRegion).ZCooldownRect);
         
         using var eRaWhite = OpenCvCommonHelper.InRangeHsv(eRa.SrcMat, new Scalar(0, 0, 235), new Scalar(0, 25, 255));
         var text = OcrFactory.Paddle.OcrWithoutDetector(eRaWhite);

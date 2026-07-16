@@ -59,7 +59,7 @@ public class NavigationInstance
         if (imageRegion.SrcMat == null || imageRegion.SrcMat.IsDisposed)
             return PathingPositionValidator.UnknownPosition;
 
-        using var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Instance.MimiMapRect);
+        using var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Get(imageRegion).MimiMapRect);
         var captureTime = DateTime.UtcNow;
 
         var mapBase = MapManager.GetMap(mapName, mapMatchMethod);
@@ -98,7 +98,7 @@ public class NavigationInstance
         if (imageRegion.SrcMat == null || imageRegion.SrcMat.IsDisposed)
             return PathingPositionValidator.UnknownPosition;
 
-        using var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Instance.MimiMapRect);
+        using var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Get(imageRegion).MimiMapRect);
         var captureTime = DateTime.UtcNow;
 
         // Perform local search phase first 

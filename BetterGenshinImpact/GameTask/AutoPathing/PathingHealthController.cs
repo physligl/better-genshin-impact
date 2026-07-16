@@ -233,7 +233,10 @@ namespace BetterGenshinImpact.GameTask.AutoPathing
             CancellationToken ct)
         {
             if (waypoint == null || partyConfig == null) return HealthRecoveryResult.HealthyAndContinue;
-            if (partyConfig.OnlyInTeleportRecover && waypoint.Type != WaypointType.Teleport.Code)
+            if (partyConfig.RecoverTiming == RecoverTiming.Never)
+                return HealthRecoveryResult.HealthyAndContinue;
+
+            if (partyConfig.RecoverTiming == RecoverTiming.OnlyTeleport && waypoint.Type != WaypointType.Teleport.Code)
                 return HealthRecoveryResult.HealthyAndContinue;
 
             if (_visionService.ClickIfInReviveModal())

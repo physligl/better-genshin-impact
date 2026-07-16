@@ -26,6 +26,7 @@ public class PathingMovementActions
     public Func<string, Task<Avatar?>> SwitchAvatarAction { get; set; } = null!;
     public Func<Task> UseElementalSkillAction { get; set; } = null!;
     public Func<PathingPartyConfig> PartyConfigGetter { get; set; } = null!;
+    public Func<Func<double, WaypointForTrack, double, ImageRegion, int, Task<bool>>> CreateHurryOnHandlerAction { get; set; } = null!;
 }
 
 /// <summary>
@@ -196,6 +197,8 @@ public class PathingMovementController
         bool exitBecauseEndJudgment = false;
         bool reachedTargetPoint = false;
         Exception? caughtException = null;
+        var orientationDiff = 360d;
+        var hurryOnHandler = _actions.CreateHurryOnHandlerAction();
 
         // 【自进化寻路】遥测采集数据
         var actualTrajectory = new List<Point2f>();
@@ -351,11 +354,24 @@ public class PathingMovementController
                     // 姿态驱动与按键分发
                     new BTSequence(
                         new BTAction(async () => {
-                            consecutiveRotationCountBeyondAngle = await AlignOrientation(waypoint, position, moveContext.Screen, moveContext.Num, consecutiveRotationCountBeyondAngle, nextWaypoint);
+                            var orientation = await AlignOrientation(
+                                waypoint,
+                                position,
+                                moveContext.Screen,
+                                moveContext.Num,
+                                consecutiveRotationCountBeyondAngle,
+                                nextWaypoint);
+                            consecutiveRotationCountBeyondAngle = orientation.ConsecutiveCount;
+                            orientationDiff = orientation.Diff;
                             moveContext.Distance = distance;
                             return BTStatus.Success;
                         }),
                         new BTAction(async () => {
+                            if (await hurryOnHandler(orientationDiff, waypoint, distance, moveContext.Screen, moveContext.Num))
+                            {
+                                return BTStatus.Running;
+                            }
+
                             var handlerStatus = await ApplyMoveModeHandlers(waypoint, moveContext);
                             if (handlerStatus == false)
                             {
@@ -565,7 +581,13 @@ public class PathingMovementController
     private float _pidLastError = 0f;
     private DateTime _pidLastTime = DateTime.MinValue;
 
-    private Task<int> AlignOrientation(WaypointForTrack waypoint, Point2f position, ImageRegion screen, int loopNum, int consecutiveCount, WaypointForTrack? nextWaypoint = null)
+    private Task<(int ConsecutiveCount, double Diff)> AlignOrientation(
+        WaypointForTrack waypoint,
+        Point2f position,
+        ImageRegion screen,
+        int loopNum,
+        int consecutiveCount,
+        WaypointForTrack? nextWaypoint = null)
     {
         int targetOrientation;
         var currentDistance = Navigation.GetDistance(waypoint, position);
@@ -606,7 +628,7 @@ public class PathingMovementController
         {
             consecutiveCount = 0;
             _pidIntegral = 0;
-            return Task.FromResult(consecutiveCount);
+            return Task.FromResult((consecutiveCount, (double)diff));
         }
         
         // 动态转角容差：距离近时容差变大以防打圈，平时要求5度内
@@ -656,7 +678,7 @@ public class PathingMovementController
         }
 
         _pidLastError = diff;
-        return Task.FromResult(consecutiveCount);
+        return Task.FromResult((consecutiveCount, (double)diff));
     }
 
     private async Task<bool?> ApplyMoveModeHandlers(WaypointForTrack waypoint, PathingMovementContext context)
