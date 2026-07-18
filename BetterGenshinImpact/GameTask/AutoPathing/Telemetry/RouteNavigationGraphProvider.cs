@@ -519,7 +519,7 @@ public sealed class RouteNavigationGraphSnapshot
         var result = new List<RouteGraphTeleportEntry>();
         try
         {
-            foreach (var scene in MapLazyAssets.Instance.ScenesDic.Values)
+            foreach (var scene in MapLazyAssets.Get().ScenesDic.Values)
             {
                 var mapName = RouteGraphGeometry.NormalizeMapName(scene.MapName);
                 foreach (var tp in scene.Points.Where(IsTeleportLike))

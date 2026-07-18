@@ -1,7 +1,6 @@
+using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Core.Simulator;
-using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoSkip;
-using BetterGenshinImpact.GameTask.AutoSkip.Assets;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
 using BetterGenshinImpact.GameTask.Common.Job;
@@ -29,6 +28,11 @@ public class PathingAnomalyResolver
     private AutoSkipTrigger? _autoSkipTrigger;
     private const int AutoSkipPollingIntervalMilliseconds = 210;
     private const int MaxContinuousMissingUiTokens = 10;
+
+    private static RecognitionObject GetAutoSkipRecognitionObject(string objectName, ImageRegion region)
+    {
+        return RecognitionAssets.Get("AutoSkip", objectName, region.Width, region.Height);
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PathingAnomalyResolver"/> class.
@@ -59,10 +63,10 @@ public class PathingAnomalyResolver
 
         try
         {
-            using var cookRegion = imageRegion.Find(AutoSkipAssets.Instance.CookRo);
-            using var mainRegion = imageRegion.Find(AutoSkipAssets.Instance.PageCloseMainRo);
-            using var whiteRegion = imageRegion.Find(ElementAssets.Instance.PageCloseWhiteRo);
-            using var closeRegion = imageRegion.Find(AutoSkipAssets.Instance.PageCloseRo);
+            using var cookRegion = imageRegion.Find(GetAutoSkipRecognitionObject("Cook", imageRegion));
+            using var mainRegion = imageRegion.Find(GetAutoSkipRecognitionObject("PageCloseMain", imageRegion));
+            using var whiteRegion = imageRegion.Find(ElementRecognition.Get("PageCloseWhite", imageRegion));
+            using var closeRegion = imageRegion.Find(GetAutoSkipRecognitionObject("PageClose", imageRegion));
 
             bool hasBlockingUi = 
                 cookRegion.IsExist() ||
@@ -104,7 +108,8 @@ public class PathingAnomalyResolver
         {
             if (initialCaptureRegion == null) return;
 
-            using var initialDisabledUiButtonRegion = initialCaptureRegion.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+            using var initialDisabledUiButtonRegion = initialCaptureRegion.Find(
+                GetAutoSkipRecognitionObject("DisabledUiButton", initialCaptureRegion));
             if (!initialDisabledUiButtonRegion.IsExist())
             {
                 return;
@@ -132,7 +137,8 @@ public class PathingAnomalyResolver
             using var captureRegion = _captureAction();
             if (captureRegion == null) break;
 
-            using var disabledUiButtonRegion = captureRegion.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+            using var disabledUiButtonRegion = captureRegion.Find(
+                GetAutoSkipRecognitionObject("DisabledUiButton", captureRegion));
             
             if (disabledUiButtonRegion.IsExist())
             {

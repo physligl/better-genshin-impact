@@ -2216,7 +2216,7 @@ public sealed class MapTileViewerControl : FrameworkElement
     {
         try
         {
-            if (!MapLazyAssets.Instance.ScenesDic.TryGetValue(mapName, out var scene))
+            if (!MapLazyAssets.Get().ScenesDic.TryGetValue(mapName, out var scene))
             {
                 return [];
             }

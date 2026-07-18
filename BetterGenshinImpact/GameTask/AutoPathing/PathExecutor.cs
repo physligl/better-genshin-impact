@@ -26,7 +26,7 @@ namespace BetterGenshinImpact.GameTask.AutoPathing;
 /// Path executor.
 /// 负责自动寻路宏观逻辑调度，整合坐标推算、脱困、异常处理与战斗等子模块。
 /// </summary>
-public class PathExecutor
+public partial class PathExecutor
 {
     internal readonly CameraRotateTask _rotateTask;
     internal readonly TrapEscaper _trapEscaper;
@@ -95,7 +95,8 @@ public class PathExecutor
                 WaitUntilRotatedToAction = WaitUntilRotatedTo,
                 SwitchAvatarAction = index => SwitchAvatar(index),
                 UseElementalSkillAction = UseElementalSkill,
-                PartyConfigGetter = () => PartyConfig
+                PartyConfigGetter = () => PartyConfig,
+                CreateHurryOnHandlerAction = CreateHurryOnHandler
             });
             
         MovementController.OnRouteTraversed = (prev, target, actualTraj, duration) => {
@@ -315,7 +316,21 @@ public class PathExecutor
                 Logger.LogWarning(handledExc.Message);
                 return PathingSegmentResult.StopPathingFailed;
             }
-            catch (TaskCanceledException)
+            catch (NormalEndException normalEndException)
+            {
+                if (!ct.IsCancellationRequested)
+                {
+                    Logger.LogInformation(normalEndException.Message);
+                }
+
+                if (!RunnerContext.Instance.isAutoFetchDispatch && RunnerContext.Instance.IsContinuousRunGroup)
+                {
+                    throw;
+                }
+
+                return PathingSegmentResult.StopPathingFailed;
+            }
+            catch (OperationCanceledException)
             {
                 if (!RunnerContext.Instance.isAutoFetchDispatch && RunnerContext.Instance.IsContinuousRunGroup)
                 {
@@ -328,7 +343,6 @@ public class PathExecutor
             {
                 _navigator.StartSkipOtherOperations();
                 Logger.LogWarning(retryException.Message);
-                throw;
             }
             catch (RetryNoCountException retryException)
             {
@@ -378,6 +392,7 @@ public class PathExecutor
     private void InitializePathing(PathingTask task)
     {
         LogScreenResolution();
+        InitHurryOnConfig();
         WeakReferenceMessenger.Default.Send(new PropertyChangedMessage<object>(this,
             "UpdateCurrentPathing", new object(), task));
     }
